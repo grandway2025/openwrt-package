@@ -1,23 +1,16 @@
-# SPDX-License-Identifier: GPL-3.0-only
-#
-# Copyright (C) 2021-2025  sirpdboy  <herboy2008@gmail.com> 
-# https://github.com/sirpdboy/luci-app-netspeedtest
-# This is free software, licensed under the Apache License, Version 2.0 .
-#
-
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=luci-app-netspeedtest
+LUCI_NAME:=luci-app-netspeedtest
+PKG_VERSION:=1.0
 
-PKG_VERSION:=5.0.5
-PKG_RELEASE:=20250612
+LUCI_TITLE:=LuCI Net Speedtest
+LUCI_DEPENDS:=+iperf3 +speedtest-cli +curl +jsonfilter +taskset +bash
 
-LUCI_TITLE:=LuCI Support for netspeedtest
-LUCI_DEPENDS:=+speedtest-cli +homebox +netspeedtest $(if $(find_package iperf3-ssl),+iperf3-ssl,+iperf3)
-LUCI_PKGARCH:=all
-PKG_MAINTAINER:=sirpdboy  <herboy2008@gmail.com>
+define Package/$(LUCI_NAME)/conffiles
+/etc/config/netspeedtest
+/etc/speedtest
+endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
-
 
 # call BuildPackage - OpenWrt buildroot signature

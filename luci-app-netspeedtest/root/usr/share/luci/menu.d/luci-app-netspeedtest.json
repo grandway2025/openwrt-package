@@ -1,7 +1,7 @@
 {
   "admin/network/netspeedtest": {
-    "title": "NetSpeedtest",
-    "order": 90,
+    "title": "SpeedTest",
+    "order": 55,
     "action": {
       "type": "firstchild"
     },
@@ -11,43 +11,19 @@
     }
   },
   "admin/network/netspeedtest/iperf3": {
-    "title": "Lan Speedtest Iperf3",
+    "title": "iPerf3 Server",
     "order": 1,
     "action": {
       "type": "view",
       "path": "netspeedtest/iperf3"
     }
   },
-  "admin/network/netspeedtest/homebox": {
-    "title": "Lan Speedtest Homebox",
+  "admin/network/netspeedtest/speedtest": {
+    "title": "Internet Speedtest",
     "order": 2,
     "action": {
       "type": "view",
-      "path": "netspeedtest/homebox"
-    }
-  },
-  "admin/network/netspeedtest/speedtest": {
-    "title": "Wan Ookla SpeedTest",
-    "order": 4,
-    "action": {
-      "type": "view",
       "path": "netspeedtest/speedtest"
-    }
-  },
-  "admin/network/netspeedtest/openspeedtest": {
-    "title": "Wan OpenSpeedTest",
-    "order": 5,
-    "action": {
-      "type": "view",
-      "path": "netspeedtest/openspeedtest"
-    }
-  },
-  "admin/network/netspeedtest/logs": {
-    "title": "Log",
-    "order": 6,
-    "action": {
-      "type": "view",
-      "path": "netspeedtest/logs"
     }
   }
 }
