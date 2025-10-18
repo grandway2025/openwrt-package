@@ -1,105 +1,168 @@
+/*   Copyright (C) 2021-2025 sirpdboy herboy2008@gmail.com https://github.com/sirpdboy/luci-app-netspeedtest */
 'use strict';
 'require view';
-'require poll';
 'require fs';
-'require rpc';
-'require uci';
 'require ui';
+'require uci';
 'require form';
+'require poll';
 
-var conf = 'netspeedtest';
-var instance = 'iperf3';
+var state = { 
+    running: false,
+    port: null
+};
 
-var callServiceList = rpc.declare({
-	object: 'service',
-	method: 'list',
-	params: ['name'],
-	expect: { '': {} }
-});
+const logPath = '/tmp/netspeedtest.log';
 
-function getServiceStatus() {
-	return L.resolveDefault(callServiceList(conf), {})
-		.then(function (res) {
-			var isrunning = false;
-			try {
-				isrunning = res[conf]['instances'][instance]['running'];
-			} catch (e) { }
-			return isrunning;
-		});
+async function checkProcess() {
+    try {
+        const res = await fs.exec('/usr/bin/pgrep', ['iperf3']);
+        if (res.code === 0 && res.stdout.trim()) {
+            return { running: true, pid: res.stdout.trim() };
+        }
+        
+        // 回退检查
+        const psRes = await fs.exec('/bin/ps', ['-w', '-C', 'iperf3', '-o', 'pid=']);
+        const pid = psRes.stdout.trim();
+        return {
+            running: !!pid,
+            pid: pid || null
+        };
+    } catch (err) {
+        console.error('Process check error:', err);
+        return { running: false, pid: null };
+    }
 }
+
+
+function controlService(action) {
+    const commands = {
+        start: `/usr/bin/iperf3 -s -D -p 5201 --logfile ${logPath} 2>&1`,
+        stop: '/usr/bin/killall -q iperf3'
+    };
+
+    return (action === 'start' 
+        ? fs.exec('/bin/sh', ['-c', `mkdir -p /tmp/netspeedtest && touch ${logPath} && chmod 644 ${logPath}`])
+        : Promise.resolve()
+    ).then(() => fs.exec('/bin/sh', ['-c', commands[action]]))
+    .catch(err => {
+        console.error('Service control error:', err);
+        throw err;
+    });
+}
+
 
 return view.extend({
 //	handleSaveApply: null,
 //	handleSave: null,
 //	handleReset: null,
-
-	load: function() {
+    load: function() {
 	return Promise.all([
-		getServiceStatus(),
 		uci.load('netspeedtest')
 	]);
-	},
+    },
 
-	poll_status: function(nodes, stat) {
-		var isRunning = stat[0],
-			view = nodes.querySelector('#service_status');
+    render: function() {
 
-		if (isRunning) {
-			view.innerHTML = "<span style=\"color:green;font-weight:bold\">" + instance + " - " + _("RUNNING") + "</span>";
-		} else {
-			view.innerHTML = "<span style=\"color:red;font-weight:bold\">" + instance + " - " + _("NOT RUNNING") + "</span>";
-		}
-		return;
-	},
+        // 创建状态元素
+        const statusIcon = E('span', { 'style': 'margin-right: 5px;' });
+        const btnGroup = E('div', { 'class': 'cbi-value-field', 'style': 'display: flex; gap: 10px;' });
+        const statusText = E('span');
+        const toggleBtn = E('button', {
+            'class': 'btn cbi-button',
+            'click': ui.createHandlerFn(this, function() {
+            const action = state.running ? 'stop' : 'start';
+            toggleBtn.disabled = true; // 禁用按钮
+            
+            return controlService(action)
+                .then(() => checkProcess())
+                .then(res => {
+                    state.running = res.running;
+                    updateStatus();
+                    toggleBtn.disabled = false; // 恢复按钮
+                })
+                .catch(err => {
+                    ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
+                    toggleBtn.disabled = false; // 出错时也要恢复按钮
+                });
 
-	render: function(res) {
-		var isRunning = res[0];
+            })
+        });
 
-		var m, s, o;
+        function updateStatus() {
+            statusIcon.textContent = state.running ? '✓' : '✗';
+            statusIcon.style.color = state.running ? 'green' : 'red';
+            statusText.textContent = _('Iperf3 Server ') + (state.running ? _('RUNNING') : _('NOT RUNNING'));
+            statusText.style.color = state.running ? 'green' : 'red';
+            statusText.style['font-weight'] = 'bold'; 
+            statusText.style['font-size'] = '0.92rem'; 
+            toggleBtn.textContent = state.running ? _('Stop Server') : _('Start Server');
+            toggleBtn.className = `btn cbi-button cbi-button-${state.running ? 'reset' : 'apply'}`;
+        }
 
-		m = new form.Map('netspeedtest', _('iPerf3 Bandwidth Performance Test'),
-			_('iPerf3 is a tool for active measurements of the maximum achievable bandwidth on IP networks.'));
+        // 初始化状态
+        statusIcon.textContent = '...';
+        statusText.textContent = _('Checking status...');
+        toggleBtn.textContent = _('Loading...');
+        toggleBtn.disabled = true;
 
-		s = m.section(form.NamedSection, '_status');
-		s.anonymous = true;
-		s.render = function (section_id) {
-			return E('div', { class: 'cbi-section' }, [
-				E('div', { id: 'service_status' }, _('Collecting data ...'))
-			]);
-		};
 
-		s = m.section(form.NamedSection, 'config', 'netspeedtest');
-		s.anonymous = true;
+// 构建UI
+const statusSection = E('div', { 'class': 'cbi-section' }, [
+    E('div', { 'style': 'margin: 15px' }, [
+        E('h3', {}, _('Lan Speedtest Iperf3')),
+        E('div', { 'class': 'cbi-map-descr' }, [statusIcon, statusText]),
+        E('div', {'class': 'cbi-value', 'style': 'margin-top: 20px'}, [
+            E('div', {'class': 'cbi-value-title'}, _('Iperf3 service control')),
+            E('div', {'class': 'cbi-value-field'}, toggleBtn),
 
-		o = s.option(form.Flag, 'iperf3_enabled', _('Enable'));
-		o.default = o.disabled;
-		o.rmempty = false;
+            E('div', {'class': 'cbi-value-title'}, _('Download iperf3 client')),
+            E('div', {'class': 'cbi-value-field'}, [ 
+                E('div', { 
+                    'class': 'cbi-value-field', 
+                    'style': 'display: flex;' 
+                }, [
+                    E('button', {
+                        'class': 'btn cbi-button cbi-button-save',
+                        'click': ui.createHandlerFn(this, () => window.open('https://iperf.fr/iperf-download.php', '_blank'))
+                    }, _('Official Website')),
+                    E('button', {
+                        'class': 'btn cbi-button cbi-button-save',
+                        'click': ui.createHandlerFn(this, () => window.open('https://github.com/sirpdboy/luci-app-netspeedtest/releases', '_blank'))
+                    }, _('GitHub'))
+                ])
+            ])
+        ]),
+        E('div', { 'style': 'text-align: right; font-style: italic; margin-top: 20px;' }, [
+            _('© github '),
+            E('a', { 
+                'href': 'https://github.com/sirpdboy/luci-app-netspeedtest', 
+                'target': '_blank',
+                'style': 'text-decoration: none;'
+            }, 'by sirpdboy')
+        ])
+    ])
+]);
 
-		s = m.section(form.TypedSection, '_cmd_ref');
-		s.anonymous = true;
-		s.render = function (section_id) {
-			return E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('iPerf3 Common commands reference')),
-				E('pre', {}, [
-"	-c, --client <host>\n\
-	-u, --udp                        UDP mode\n\
-	-b, --bandwidth <number>[KMG]    target bandwidth in bits/sec (0 for unlimited)\n\
-	-t, --time      <number>         time in seconds to transmit for (default 10 secs)\n\
-	-i, --interval  <number>         seconds between periodic bandwidth reports\n\
-	-P, --parallel  <number>         number of parallel client streams to run\n\
-	-R, --reverse                    run in reverse mode (server sends, client receives)\n"
-				])
-			]);
-		};
+        // 初始化状态检查
+        checkProcess().then(res => {
+            state.running = res.running;
+            updateStatus();
+            toggleBtn.disabled = false;
+            
+            // 启动轮询
+            poll.add(() => {
+                return checkProcess().then(res => {
+                    if (res.running !== state.running) {
+                        state.running = res.running;
+                        updateStatus();
+                    }
+                });
+            }, 5);
+        });
 
-		return m.render()
-		.then(L.bind(function(m, nodes) {
-			poll.add(L.bind(function() {
-				return Promise.all([
-					getServiceStatus()
-				]).then(L.bind(this.poll_status, this, nodes));
-			}, this), 3);
-			return nodes;
-		}, this, m));
+ 
+        return statusSection;
 	}
+
 });
